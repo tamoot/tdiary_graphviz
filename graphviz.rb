@@ -1,19 +1,33 @@
-re 'digest/md5'
+# -*- coding: utf-8 -*-
+#
+# graphviz.rb - embed image from graphviz
+#
+# Copyright (C) 2010, tamoot <tamoot+tdiary@gmail.com>
+# You can redistribute it and/or modify it under GPL2.
+#
+
+require 'digest/md5'
 require 'tempfile'
 
-def graphviz(dot_string, option = {:format => :jpg, :width => 0, :height => 0})
-
+def graphviz(dot_string, option = {})
+   default = {:format => :jpg}
+   
    # option
-   img_attr = {}
+   img_attr = default.dup
    img_attr.merge!(:width  => option[:width])  if !option[:width].nil?  && option[:width].to_i  > 0
    img_attr.merge!(:height => option[:height]) if !option[:height].nil? && option[:height].to_i > 0
    img_attr.merge!(:alt    => option[:alt])    if !option[:alt].nil?
+   img_attr.merge!(:class  => option[:class])  if !option[:class].nil?
    img_attr_str = img_attr.collect{|k, v| "#{k}=\"#{v}\"" }.join(' ')
    
    # graphviz process
    img_src_url = Graphviz::Cache::read(graphviz_conf, dot_string)
-   img_src_url = Graphviz::Dot.new(graphviz_conf, dot_string).export(option) if img_src_url.nil? || img_src_url == ''
-   
+   begin
+      img_src_url = Graphviz::Dot.new(graphviz_conf, dot_string).export(img_attr) if img_src_url.nil? || img_src_url == ''
+   rescue StandardError => e
+      return e.message
+   end
+
    %Q|<img src="#{graphviz_conf.img_uri}/#{img_src_url}" #{img_attr_str}>|
 end
 
@@ -83,7 +97,7 @@ module ::Graphviz
             dot_file.puts @dot_string
             dot_file.flush
             stdout = `#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path}`
-            raise Exception.new(stdout) if stdout != "" || $?.to_i / 256 != 0
+            raise StandardError.new("code=#{$?.to_i / 256}, #{stdout}") if stdout != "" || $?.to_i / 256 != 0
          ensure
             dot_file.close
             dot_file.unlink
