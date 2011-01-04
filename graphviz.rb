@@ -9,23 +9,33 @@
 require 'digest/md5'
 require 'tempfile'
 
-def graphviz(dot_string, option = {})
-   default = {:format => :jpg}
+def graphviz(dot_string, option = {:format => :jpg})
+   # dot option
+   dot_attr = {}
+   dot_attr.merge!(:format => option[:format]) if option[:format]
    
-   # option
-   img_attr = default.dup
-   img_attr.merge!(:width  => option[:width])  if !option[:width].nil?  && option[:width].to_i  > 0
-   img_attr.merge!(:height => option[:height]) if !option[:height].nil? && option[:height].to_i > 0
-   img_attr.merge!(:alt    => option[:alt])    if !option[:alt].nil?
-   img_attr.merge!(:class  => option[:class])  if !option[:class].nil?
+   # img attribute
+   img_attr = {}
+   img_attr.merge!(:width  => option[:width])  if option[:width]  && option[:width].to_i  > 0
+   img_attr.merge!(:height => option[:height]) if option[:height] && option[:height].to_i > 0
+   img_attr.merge!(:alt    => option[:alt])    if option[:alt]
+   img_attr.merge!(:class  => option[:class])  if option[:class]
    img_attr_str = img_attr.collect{|k, v| "#{k}=\"#{v}\"" }.join(' ')
    
    # graphviz process
    img_src_url = Graphviz::Cache::read(graphviz_conf, dot_string)
-   begin
-      img_src_url = Graphviz::Dot.new(graphviz_conf, dot_string).export(img_attr) if img_src_url.nil? || img_src_url == ''
-   rescue StandardError => e
-      return e.message
+   if img_src_url.empty?
+      begin
+         img_src_url = Graphviz::Dot.new(graphviz_conf, dot_string).export(dot_attr)
+      rescue StandardError => e
+         # print error information, dot contents, error message...
+         return <<GRAPHVIZERROR
+<div class="graphviz_error">
+<p span="message">Graphviz Plugin Error.<p>
+#{ e.message.gsub('\\n', '<br>') }
+</div>
+GRAPHVIZERROR
+      end
    end
 
    %Q|<img src="#{graphviz_conf.img_uri}/#{img_src_url}" #{img_attr_str}>|
@@ -76,7 +86,18 @@ module ::Graphviz
    class Cache
       def self.read(cache, dot_string)
          digest = Digest::MD5.hexdigest(dot_string)
-         Dir::glob("#{cache.img_path}").grep(/#{digest}/).first
+         cache = Dir::glob("#{cache.img_path}").grep(/#{digest}/).first
+         return '' unless cache
+         return cache
+      end
+   end
+   
+   class ExportError < StandardError
+      attr_reader :dot_str, :stdout, :stderr, :return_code
+      def initialize(params)
+                    @dot_str = params[:dot_str].nil? ? '' : params[:dot_str]
+                    @stdout  = params[:stdout].nil? ? '' : params[:stdout]
+                    @stderr  = params[:stderr].nil? ? '' : params[:stderr]
       end
    end
    
@@ -85,28 +106,45 @@ module ::Graphviz
       
       def initialize(conf, dot_string)
          @dot_string = dot_string
-         @g_conf       = conf
+         @g_conf     = conf
       end
       
       def export(option = {:format => :jpg})
          digest = Digest::MD5.hexdigest(@dot_string)
          img_file = "#{digest}.#{option[:format].to_s}"
          img_path = "#{g_conf.img_path}/#{img_file}"
+         require_close = []
          begin
             dot_file = Tempfile.new(digest)
             dot_file.puts @dot_string
             dot_file.flush
-            stdout = `#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path}`
-            raise StandardError.new("code=#{$?.to_i / 256}, #{stdout}") if stdout != "" || $?.to_i / 256 != 0
+            
+            stdout   = Tempfile.new("#{digest}-stdout")
+            stderr   = Tempfile.new("#{digest}-stderr")
+            require_close = [dot_file, stdout, stderr]
+            
+            `#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path} 2> #{stderr.path} > #{stdout.path}`
+            
+            if $?.to_i / 256 != 0
+               msg = "<pre>#{@dot_string}</pre><br>" \
+                     "<p>#{g_conf.dot_path} is error. <br>"    \
+                     "<b>exit_code=</b>#{$?.to_i / 256}<br>" \
+                     "<b>stdout=</b>#{stdout.read}<br>" \
+                     "<b>stderr=</b>#{stderr.read}<br></p>"
+               raise StandardError.new(msg)
+            end
          ensure
-            dot_file.close
-            dot_file.unlink
+            require_close.each do |tmp|
+               if tmp
+                  tmp.close
+                  tmp.unlink
+               end
+            end
          end
          img_file
       end
    end
 end
-
 
 # Local Variables:
 # mode: ruby
@@ -115,3 +153,4 @@ end
 # ruby-indent-level: 3
 # End:
 # vim: ts=3
+
