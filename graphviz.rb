@@ -31,8 +31,9 @@ def graphviz(dot_string, option = {:format => :jpg})
          # print error information, dot contents, error message...
          return <<GRAPHVIZERROR
 <div class="graphviz_error">
-<p span="message">Graphviz Plugin Error.<p>
-#{ e.message.gsub('\\n', '<br>') }
+<p span="message">Graphviz Plugin has detected an error.<br>
+Please fix the problem before continuing.</p>
+#{ e.message }
 </div>
 GRAPHVIZERROR
       end
@@ -114,6 +115,7 @@ module ::Graphviz
          img_file = "#{digest}.#{option[:format].to_s}"
          img_path = "#{g_conf.img_path}/#{img_file}"
          require_close = []
+         cmd = ''
          begin
             dot_file = Tempfile.new(digest)
             dot_file.puts @dot_string
@@ -122,15 +124,18 @@ module ::Graphviz
             stdout   = Tempfile.new("#{digest}-stdout")
             stderr   = Tempfile.new("#{digest}-stderr")
             require_close = [dot_file, stdout, stderr]
-            
-            `#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path} 2> #{stderr.path} > #{stdout.path}`
+            cmd = "#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path} 2> #{stderr.path} > #{stdout.path}"
+            `#{cmd}`
+#            `#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path} 2> #{stderr.path} > #{stdout.path}`
             
             if $?.to_i / 256 != 0
-               msg = "<pre>#{@dot_string}</pre><br>" \
-                     "<p>#{g_conf.dot_path} is error. <br>"    \
+               msg = "<p>The Command:<br>"    \
+                     "<p>#{cmd}<br>"    \
                      "<b>exit_code=</b>#{$?.to_i / 256}<br>" \
                      "<b>stdout=</b>#{stdout.read}<br>" \
-                     "<b>stderr=</b>#{stderr.read}<br></p>"
+                     "<b>stderr=</b>#{stderr.read}<br></p>" \
+                     "<p>succeeded but emitted the following output:<br>" \
+                     "<pre>#{@dot_string}</pre></p>"
                raise StandardError.new(msg)
             end
          ensure
