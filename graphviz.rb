@@ -8,6 +8,7 @@
 
 require 'digest/md5'
 require 'tempfile'
+require 'gv'
 
 def graphviz(dot_string, option = {:format => :jpg})
    # dot option
@@ -124,11 +125,9 @@ module ::Graphviz
             stdout   = Tempfile.new("#{digest}-stdout")
             stderr   = Tempfile.new("#{digest}-stderr")
             require_close = [dot_file, stdout, stderr]
-            cmd = "#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path} 2> #{stderr.path} > #{stdout.path}"
-            `#{cmd}`
-#            `#{g_conf.dot_path} -T#{option[:format].to_s} #{dot_file.path} -o #{img_path} 2> #{stderr.path} > #{stdout.path}`
-            
-            if $?.to_i / 256 != 0
+            gh = Gv.readstring(@dot_string)
+            Gv.layout(gh,"dot")
+            unless Gv.render(gh, option[:format].to_s, img_path)
                msg = "<p>The Command:<br>"    \
                      "<p>#{cmd}<br>"    \
                      "<b>exit_code=</b>#{$?.to_i / 256}<br>" \
@@ -145,6 +144,7 @@ module ::Graphviz
                   tmp.unlink
                end
             end
+            Gv.rm(gh)
          end
          img_file
       end
