@@ -9,6 +9,15 @@
 require 'digest/md5'
 require 'tempfile'
 require 'gv'
+require 'cgi'
+
+# hikiでは、dot_stringがCGI.escapeHTMLされてくるため、
+# dot言語でノードのつながりを表す「->」の「>」が「gt」などと変換されてしまう。
+# これを防ぐため、CGI.unescapeHTMLする。
+# なお、tdiaryでの動作を崩さないよう、hiki用ラップメソッドとして作成した。
+def graphviz_hiki(dot_string, option = {:format => :jpg})
+    graphviz(CGI.unescapeHTML(dot_string), option)
+end
 
 def graphviz(dot_string, option = {:format => :jpg})
    # dot option
